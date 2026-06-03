@@ -1,0 +1,49 @@
+name: Cherry-pick upstream commits
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cherry-pick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout openjdk-mergebot
+        uses: actions/checkout@v4
+        with:
+          path: mergebot
+
+      - name: Clone jdk repo
+        run: |
+          git clone --branch openjdk-keep-jvmci-alive \
+            https://x-access-token:${{ secrets.JDK_REPO_TOKEN }}@github.com/synecdoche/jdk.git jdk
+          cd jdk
+          git remote add upstream https://github.com/openjdk/jdk.git
+          git fetch upstream master
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Cherry-pick new commits
+        run: bash mergebot/.github/scripts/cherry-pick-upstream.sh
+
+      - name: Push jdk branch
+        run: |
+          cd jdk
+          git push origin openjdk-keep-jvmci-alive
+
+      - name: Commit and push history
+        run: |
+          cd mergebot
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet jvmci-merge-history.json 2>/dev/null; then
+            echo "No changes to history file."
+          else
+            git add jvmci-merge-history.json
+            git commit -m "Update jvmci-merge-history.json"
+            git push
+          fi
